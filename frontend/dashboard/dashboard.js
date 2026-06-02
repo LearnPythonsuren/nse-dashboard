@@ -463,10 +463,16 @@
         if (!window.supabaseClient) { setTimeout(init, 100); return; }
         try {
             utils.showLoading(true);
-            await auth.loadUser();
-            await tickers.load();
+
+            // Run independently so one failure doesn't block the others
+            await Promise.allSettled([
+                auth.loadUser(),
+                tickers.load()
+            ]);
+
             attach();
             realtime.init();
+
             // Load expiries + chart for the auto-selected ticker
             if (elements.tickerSelect?.value) {
                 await onTickerChange();
@@ -487,4 +493,4 @@
     } else {
         init();
     }
-})();
+})();   

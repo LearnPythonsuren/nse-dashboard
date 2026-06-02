@@ -1,9 +1,6 @@
 // ============================================
 // Supabase Client Initialization
 // ============================================
-// This file initializes the Supabase client globally
-// Used by all other JavaScript files in the app
-
 (function() {
     'use strict';
 
@@ -13,13 +10,11 @@
         return;
     }
 
-    // Wait for Supabase library to load
     function initSupabase() {
         if (typeof supabase === 'undefined') {
             console.error('Supabase library not loaded');
             return null;
         }
-
         try {
             const client = supabase.createClient(
                 CONFIG.SUPABASE_URL,
@@ -30,14 +25,9 @@
                         persistSession: true,
                         detectSessionInUrl: true
                     },
-                    realtime: {
-                        params: {
-                            eventsPerSecond: 10
-                        }
-                    }
+                    realtime: { params: { eventsPerSecond: 10 } }
                 }
             );
-
             console.log('✅ Supabase client initialized');
             return client;
         } catch (error) {
@@ -46,101 +36,103 @@
         }
     }
 
-    // Initialize and attach to window
     window.supabaseClient = initSupabase();
 
-    // ============================================
-    // Helper functions
-    // ============================================
     window.supabaseHelpers = {
-        // Get current user
         async getUser() {
-            const { data: { user }, error } = await window.supabaseClient.auth.getUser();
+            const { data: { user } } = await window.supabaseClient.auth.getUser();
             return user;
         },
 
-        // Get current session
         async getSession() {
-            const { data: { session }, error } = await window.supabaseClient.auth.getSession();
+            const { data: { session } } = await window.supabaseClient.auth.getSession();
             return session;
         },
 
-        // Get user profile
+        // Hardened: never throws. Uses maybeSingle() and auto-creates a profile if missing.
         async getProfile() {
-            const user = await this.getUser();
-            if (!user) return null;
+            try {
+                const user = await this.getUser();
+                if (!user) return null;
 
-            const { data, error } = await window.supabaseClient
-                .from('profiles')
-                .select('*')
-                .eq('id', user.id)
-                .single();
+                // maybeSingle() returns null instead of throwing when no row exists
+                const { data, error } = await window.supabaseClient
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .maybeSingle();
 
-            if (error) {
-                console.error('Profile fetch error:', error);
+                if (error) {
+                    console.warn('Profile fetch error:', error.message);
+                    return null;
+                }
+
+                // Auto-create a profile if it doesn't exist yet
+                if (!data) {
+                    const newProfile = {
+                        id: user.id,
+                        email: user.email,
+                        username: (user.email || 'user').split('@')[0],
+                        full_name: user.user_metadata?.full_name || ''
+                    };
+                    const { data: created, error: insErr } = await window.supabaseClient
+                        .from('profiles')
+                        .insert(newProfile)
+                        .select()
+                        .maybeSingle();
+                    if (insErr) {
+                        console.warn('Profile create failed:', insErr.message);
+                        return newProfile; // return in-memory fallback so UI still works
+                    }
+                    return created || newProfile;
+                }
+
+                return data;
+            } catch (e) {
+                console.warn('getProfile failed:', e);
                 return null;
             }
-
-            return data;
         },
 
-        // Check if user is logged in
         async isLoggedIn() {
             const session = await this.getSession();
             return session !== null;
         },
 
-        // Sign out
         async signOut() {
             const { error } = await window.supabaseClient.auth.signOut();
             if (error) console.error('Sign out error:', error);
             return !error;
         },
 
-        // Subscribe to realtime changes
         subscribeToTable(tableName, callback) {
             return window.supabaseClient
                 .channel(`public:${tableName}`)
-                .on(
-                    'postgres_changes',
+                .on('postgres_changes',
                     { event: '*', schema: 'public', table: tableName },
-                    callback
-                )
+                    callback)
                 .subscribe();
         },
 
-        // Log user activity (optional)
         async logActivity(action, resource, metadata = {}) {
             try {
                 const user = await this.getUser();
                 if (!user) return;
-
-                await window.supabaseClient
-                    .from('user_activity')
-                    .insert({
-                        user_id: user.id,
-                        action,
-                        resource,
-                        metadata
-                    });
-            } catch (error) {
-                console.warn('Activity logging failed:', error);
+                await window.supabaseClient.from('user_activity').insert({
+                    user_id: user.id, action, resource, metadata
+                });
+            } catch (e) {
+                console.warn('Activity logging failed:', e);
             }
         }
     };
 
-    // ============================================
-    // Auth state listener
-    // ============================================
     if (window.supabaseClient) {
         window.supabaseClient.auth.onAuthStateChange((event, session) => {
             console.log(`[Auth Event] ${event}`);
-            
-            // Dispatch custom event for other parts of app to listen
             window.dispatchEvent(new CustomEvent('authStateChange', {
                 detail: { event, session }
             }));
         });
     }
-
 })();
