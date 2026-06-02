@@ -1,0 +1,1 @@
+curl.exe -X POST "https://gsldbanldvmhxxonrinp.supabase.co/functions/v1/download-nse" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzbGRiYW5sZHZtaHh4b25yaW5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNTA1NjIsImV4cCI6MjA5MjkyNjU2Mn0.vRQCDqIXHGFiDjUsVHPoDpVSJ2i_UeDryOlaxJEWGcc" -H "Content-Type: application/json" -d '{\"days\":5}'
